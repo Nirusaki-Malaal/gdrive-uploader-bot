@@ -1,88 +1,116 @@
-from pydrive.auth import GoogleAuth, AuthenticationError
-from bot import col, bot, Config, LOGS, td
-import json, pyrogram, time, datetime, asyncio, os
-from pydrive.drive import GoogleDrive
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+import os
 
-async def if_user(message):
-   if col.find_one({'id' : message.from_user.id}):
-      return True
-   else:
-      return False
+from pydrive.auth import AuthenticationError, GoogleAuth
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from bot import bot, col, td
+
 
 async def teamdrive_auth(bot, message):
-    if not col.find_one({'id' : message.from_user.id}):
-        return await bot.send_message(chat_id= message.from_user.id , text="Better Authorise First", reply_to_message_id = message.id)
-    if td.find_one({'id' : message.from_user.id}):
-        return await bot.send_message(chat_id= message.from_user.id , text="TD Is Already Registered Use /tdvoke To Revoke TD", reply_to_message_id = message.id)
-    else:
-        td_id = await bot.ask(chat_id=message.from_user.id, text="Enter TEAMDRIVE_ID\nNote :\nAny Detail Being Wrong Will Break Upload Sequence", reply_to_message_id=message.id)
-        teamDriveId = td_id.text
-        td_folder_id = await bot.ask(chat_id=message.from_user.id, text="Enter TEAMDRIVE_FOLDER_ID\nNote :\nAny Detail Being Wrong Will Break Upload Sequence", reply_to_message_id=td_id.id)
-        td.insert_one({'id' : message.from_user.id, 'TEAMDRIVE_ID' : teamDriveId, 'TEAMDRIVE_FOLDER_ID' : str(td_folder_id.text)})
-        await bot.send_message(chat_id= message.from_user.id , text="Succesfully Registered Your Teamdrive", reply_to_message_id = td_folder_id.id)
+    user_id = message.from_user.id
+    if not col.find_one({"id": user_id}):
+        return await bot.send_message(
+            chat_id=user_id,
+            text="Better Authorise First",
+            reply_to_message_id=message.id,
+        )
+
+    if td.find_one({"id": user_id}):
+        return await bot.send_message(
+            chat_id=user_id,
+            text="TD is already registered. Use /tdvoke to revoke TD",
+            reply_to_message_id=message.id,
+        )
+
+    td_id = await bot.ask(
+        chat_id=user_id,
+        text="Enter TEAMDRIVE_ID\nNote:\nAny wrong detail will break upload sequence",
+        reply_to_message_id=message.id,
+    )
+    td_folder_id = await bot.ask(
+        chat_id=user_id,
+        text="Enter TEAMDRIVE_FOLDER_ID\nNote:\nAny wrong detail will break upload sequence",
+        reply_to_message_id=td_id.id,
+    )
+    td.insert_one(
+        {
+            "id": user_id,
+            "TEAMDRIVE_ID": td_id.text,
+            "TEAMDRIVE_FOLDER_ID": td_folder_id.text,
+        }
+    )
+    await bot.send_message(
+        chat_id=user_id,
+        text="Successfully registered your Team Drive",
+        reply_to_message_id=td_folder_id.id,
+    )
 
 
 async def authorise(bot, message):
+    user_id = message.from_user.id
     gauth = GoogleAuth()
-    if col.find_one({'id' : message.from_user.id}):
-     dictionary = col.find_one({'id' : message.from_user.id})
-     credentials = str(dictionary['credentials']) ## credentials
-     if not os.path.exists(str(message.from_user.id)):
-      with open(f'{str(message.from_user.id)}' , 'w') as file1:
-       p = file1.write(credentials)
-       file1.close()
-     gauth.LoadCredentialsFile(str(message.from_user.id))
-     if gauth.access_token_expired:
-        gauth.Refresh() ## Refresh Token If Expired ##
-        await bot.send_message(chat_id=message.from_user.id, text="Refreshed Authorisation")
-     else:
-        gauth.Authorize() ## Authorising With Saved Credentials ##
-        await bot.send_message(chat_id=message.from_user.id, text="Already Authorised")
-    else:
-     authurl = gauth.GetAuthUrl()
-     input1 = await bot.ask(chat_id=message.from_user.id, reply_to_message_id=message.id, text="Open This Url And Send The Authorisation Code" ,reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('Link', url=authurl)]])) ## Listening
-     try:
-      drive = gauth.Auth(str(input1.text))
-      gauth.SaveCredentialsFile(str(message.from_user.id))
-      with open(str(message.from_user.id) , 'r') as file2:
-       b = file2.read()
-       file2.close()
-      col.insert_one({'id': message.from_user.id, 'credentials' : b})
-      await bot.send_message(chat_id=message.from_user.id, text="Authorized")
-     except AuthenticationError as e:
-      await bot.send_message(message.from_user.id, "Wrong Token Entered")
 
-async def revoke(bot, message):
-   if col.find_one({'id' : message.from_user.id}):
-      col.delete_one({'id' : message.from_user.id})
-      await bot.send_message(text="Revoked", chat_id=message.from_user.id, reply_to_message_id=message.id)
-   else:
-      await bot.send_message(text="Authorise First Do /authorise To Authorise", chat_id=message.from_user.id, reply_to_message_id=message.id)
+    existing = col.find_one({"id": user_id})
+    if existing:
+        credentials = str(existing["credentials"])
+        if not os.path.exists(str(user_id)):
+            with open(str(user_id), "w", encoding="utf-8") as file_obj:
+                file_obj.write(credentials)
+
+        gauth.LoadCredentialsFile(str(user_id))
+        if gauth.access_token_expired:
+            gauth.Refresh()
+            await bot.send_message(chat_id=user_id, text="Refreshed Authorisation")
+        else:
+            gauth.Authorize()
+            await bot.send_message(chat_id=user_id, text="Already Authorised")
+        return
+
+    authurl = gauth.GetAuthUrl()
+    input1 = await bot.ask(
+        chat_id=user_id,
+        reply_to_message_id=message.id,
+        text="Open this URL and send the authorisation code",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Link", url=authurl)]]),
+    )
+
+    try:
+        gauth.Auth(str(input1.text))
+        gauth.SaveCredentialsFile(str(user_id))
+        with open(str(user_id), "r", encoding="utf-8") as file_obj:
+            credentials = file_obj.read()
+        col.insert_one({"id": user_id, "credentials": credentials})
+        await bot.send_message(chat_id=user_id, text="Authorized")
+    except AuthenticationError:
+        await bot.send_message(user_id, "Wrong token entered")
+
 
 def check_user(message):
-   gauth = GoogleAuth()
-   if col.find_one({'id' : message.from_user.id}):
-     dictionary = col.find_one({'id' : message.from_user.id})
-     credentials = str(dictionary['credentials']) ## Credentials ##
-     if not os.path.exists(str(message.from_user.id)):
-      with open(f'{str(message.from_user.id)}' , 'w') as file1:
-       p = file1.write(credentials)
-       file1.close()
-     gauth.LoadCredentialsFile(str(message.from_user.id))
-     if gauth.access_token_expired:
-        gauth.Refresh() ## Refresh Token If Expired ##
-     else:
-        gauth.Authorize() ## Authorising With Saved Credentials ##
+    user_id = message.from_user.id
+    if not col.find_one({"id": user_id}):
+        return
+
+    gauth = GoogleAuth()
+    credentials = str(col.find_one({"id": user_id})["credentials"])
+    if not os.path.exists(str(user_id)):
+        with open(str(user_id), "w", encoding="utf-8") as file_obj:
+            file_obj.write(credentials)
+
+    gauth.LoadCredentialsFile(str(user_id))
+    if gauth.access_token_expired:
+        gauth.Refresh()
+    else:
+        gauth.Authorize()
+
 
 async def proceed_or_not(message):
-    if col.find_one({'id' : message.from_user.id}):
-        return "proceed"
-    else:
-       await bot.send_message(message.from_user.id , "Authorise First Newbie Use /authorise")
-       return "quit"
-    if td.find_one({'id' : message.from_user.id}):
-      return "proceed"
-    else:
-       await bot.send_message(message.from_user.id , "Teamdrive Not Registered Use /td To Authorise Team Drive")
-       return "quit"
+    user_id = message.from_user.id
+    if not col.find_one({"id": user_id}):
+        await bot.send_message(user_id, "Authorise first. Use /authorise")
+        return "quit"
+
+    if not td.find_one({"id": user_id}):
+        await bot.send_message(user_id, "Team Drive not registered. Use /td")
+        return "quit"
+
+    return "proceed"
